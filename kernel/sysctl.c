@@ -391,6 +391,51 @@ static struct ctl_table kern_table[] = {
 	},
 #endif /* CONFIG_NUMA_BALANCING */
 #endif /* CONFIG_SCHED_DEBUG */
+#ifdef CONFIG_ATLAS
+	{
+		.procname	= "sched_atlas_min_slack",
+		.data		= &sysctl_sched_atlas_min_slack,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0666,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "sched_atlas_advance_in_cfs",
+		.data		= &sysctl_sched_atlas_advance_in_cfs,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0666,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
+	{
+		.procname	= "sched_atlas_idle_job_stealing",
+		.data		= &sysctl_sched_atlas_idle_job_stealing,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0666,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
+	{
+		.procname	= "sched_atlas_wakeup_balancing",
+		.data		= &sysctl_sched_atlas_wakeup_balancing,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0666,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
+	{
+		.procname	= "sched_atlas_overload_push",
+		.data		= &sysctl_sched_atlas_overload_push,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0666,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
+#endif
 	{
 		.procname	= "sched_rt_period_us",
 		.data		= &sysctl_sched_rt_period,

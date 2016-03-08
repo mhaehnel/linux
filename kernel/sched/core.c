@@ -1084,11 +1084,6 @@ static struct rq *move_queued_task(struct rq *rq, struct task_struct *p, int new
 	return rq;
 }
 
-struct migration_arg {
-	struct task_struct *task;
-	int dest_cpu;
-};
-
 /*
  * Move (not current) task off this cpu, onto dest cpu. We're doing
  * this because either it can't run here any more (set_cpus_allowed()
@@ -1117,7 +1112,7 @@ static struct rq *__migrate_task(struct rq *rq, struct task_struct *p, int dest_
  * and performs thread migration by bumping thread off CPU then
  * 'pushing' onto another runqueue.
  */
-static int migration_cpu_stop(void *data)
+int migration_cpu_stop(void *data)
 {
 	struct migration_arg *arg = data;
 	struct task_struct *p = arg->task;
@@ -1156,8 +1151,18 @@ void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 	if (p->sched_class->set_cpus_allowed)
 		p->sched_class->set_cpus_allowed(p, new_mask);
 
+#ifdef CONFIG_ATLAS
+	cpumask_copy(&p->atlas.last_mask, new_mask);
+	if (task_can_migrate(p)) {
+		cpumask_copy(&p->cpus_allowed, new_mask);
+		p->nr_cpus_allowed = cpumask_weight(new_mask);
+	} else {
+		atlas_sched_class.set_cpus_allowed(p, new_mask);
+	}
+#else
 	cpumask_copy(&p->cpus_allowed, new_mask);
 	p->nr_cpus_allowed = cpumask_weight(new_mask);
+#endif
 }
 
 /*
@@ -1178,8 +1183,10 @@ int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
 
 	rq = task_rq_lock(p, &flags);
 
+#ifndef CONFIG_ATLAS
 	if (cpumask_equal(&p->cpus_allowed, new_mask))
 		goto out;
+#endif
 
 	if (!cpumask_intersects(new_mask, cpu_active_mask)) {
 		ret = -EINVAL;
@@ -1573,6 +1580,11 @@ int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 	if (p->nr_cpus_allowed > 1)
 		cpu = p->sched_class->select_task_rq(p, cpu, sd_flags, wake_flags);
 
+#ifdef CONFIG_ATLAS
+	if (atlas_task(p))
+		cpu = p->sched_class->select_task_rq(p, cpu, sd_flags,
+						     wake_flags);
+#endif
 	/*
 	 * In order not to call set_task_cpu() on a blocking task we need
 	 * to rely on ttwu() to place the task on a valid ->cpus_allowed
@@ -2000,6 +2012,10 @@ void __dl_clear_params(struct task_struct *p)
 	dl_se->dl_yielded = 0;
 }
 
+#ifdef CONFIG_ATLAS
+extern enum hrtimer_restart atlas_timer_task_function(struct hrtimer *timer);
+#endif
+
 /*
  * Perform scheduler related setup for a newly forked process p.
  * p is forked by current.
@@ -2030,6 +2046,45 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 	__dl_clear_params(p);
 
 	INIT_LIST_HEAD(&p->rt.run_list);
+
+#ifdef CONFIG_ATLAS
+	if (unlikely(p->policy == SCHED_ATLAS)) {
+		WARN_ONCE(1, "Forking ATLAS tasks requires "
+			     "SCHED_FLAG_RESET_ON_FORK to be set. Setting "
+			     "now.");
+/*
+ * Reset hard to SCHED_NORMAL. sched_reset_on_fork does not work for
+ * SCHED_ATLAS_RECOVER, because it is not considered a RT scheduling policy,
+ * and only RT sched policies cause a reset to SCHED_NORMAL.
+ */
+#if 0
+		p->sched_reset_on_fork = 1;
+#else
+		p->policy = SCHED_NORMAL;
+		p->static_prio = NICE_TO_PRIO(0);
+		p->rt_priority = 0;
+#endif
+	}
+
+	p->atlas.flags = 0;
+	p->atlas.on_rq = 0;
+	p->atlas.job = NULL;
+	INIT_LIST_HEAD(&p->atlas.jobs);
+	spin_lock_init(&p->atlas.jobs_lock);
+
+	p->atlas.nr_jobs[ATLAS] = 0;
+	p->atlas.nr_jobs[RECOVER] = 0;
+	p->atlas.nr_jobs[CFS] = 0;
+
+	p->atlas.last_cpu = -1;
+	cpumask_copy(&p->atlas.last_mask, &p->cpus_allowed);
+
+	p->atlas.horizon = 0;
+	p->atlas.reservation = 0;
+
+	hrtimer_init(&p->atlas.timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+	p->atlas.timer.function = &atlas_timer_task_function;
+#endif
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
 	INIT_HLIST_HEAD(&p->preempt_notifiers);
@@ -3013,6 +3068,13 @@ static void __sched __schedule(void)
 
 	rq->clock_skip_update <<= 1; /* promote REQ to ACT */
 
+#ifdef CONFIG_ATLAS
+	if (rq->atlas.timer_target == ATLAS_NONE &&
+	    rq->atlas.slack_task != NULL) {
+		fixup_atlas_slack(&rq->atlas);
+	}
+#endif
+
 	switch_count = &prev->nivcsw;
 	if (prev->state && !(preempt_count() & PREEMPT_ACTIVE)) {
 		if (unlikely(signal_pending_state(prev->state, prev))) {
@@ -3020,6 +3082,14 @@ static void __sched __schedule(void)
 		} else {
 			deactivate_task(rq, prev, DEQUEUE_SLEEP);
 			prev->on_rq = 0;
+
+#ifdef CONFIG_ATLAS
+			/* check if thread was scheduled by cfs to support an
+			 * atlas job */
+			if (unlikely(rq->atlas.slack_task == prev)) {
+				atlas_cfs_blocked(rq, prev);
+			}
+#endif
 
 			/*
 			 * If a worker went to sleep, notify and ask workqueue
@@ -3289,6 +3359,11 @@ void rt_mutex_setprio(struct task_struct *p, int prio)
 	 *      --> -dl task blocks on mutex A and could preempt the
 	 *          running task
 	 */
+#ifdef CONFIG_ATLAS
+	WARN_ONCE(p->sched_class == &atlas_sched_class ||
+				  p->policy == SCHED_ATLAS,
+		  "RT mutexes are not implemented for ATLAS.");
+#endif
 	if (dl_prio(prio)) {
 		struct task_struct *pi_task = rt_mutex_get_top_task(p);
 		if (!dl_prio(p->normal_prio) ||
@@ -3570,7 +3645,13 @@ static void __setscheduler(struct rq *rq, struct task_struct *p,
 	else
 		p->prio = normal_prio(p);
 
-	if (dl_prio(p->prio))
+#ifdef CONFIG_ATLAS
+	/* ATLAS does not have a priority associated with the scheduling class,
+	 * so we have to check for it first. */
+	if (p->policy == SCHED_ATLAS)
+		p->sched_class = &atlas_sched_class;
+#endif
+	else if (dl_prio(p->prio))
 		p->sched_class = &dl_sched_class;
 	else if (rt_prio(p->prio))
 		p->sched_class = &rt_sched_class;
@@ -3684,10 +3765,17 @@ recheck:
 	} else {
 		reset_on_fork = !!(attr->sched_flags & SCHED_FLAG_RESET_ON_FORK);
 
+#ifndef CONFIG_ATLAS
 		if (policy != SCHED_DEADLINE &&
 				policy != SCHED_FIFO && policy != SCHED_RR &&
 				policy != SCHED_NORMAL && policy != SCHED_BATCH &&
 				policy != SCHED_IDLE)
+#else
+		if (policy != SCHED_DEADLINE &&
+				policy != SCHED_FIFO && policy != SCHED_RR &&
+				policy != SCHED_NORMAL && policy != SCHED_BATCH &&
+				policy != SCHED_IDLE && policy != SCHED_ATLAS)
+#endif
 			return -EINVAL;
 	}
 
@@ -7262,6 +7350,9 @@ void __init sched_init(void)
 		init_cfs_rq(&rq->cfs);
 		init_rt_rq(&rq->rt);
 		init_dl_rq(&rq->dl);
+#ifdef CONFIG_ATLAS
+		init_atlas_rq(&rq->atlas, i);
+#endif
 #ifdef CONFIG_FAIR_GROUP_SCHED
 		root_task_group.shares = ROOT_TASK_GROUP_LOAD;
 		INIT_LIST_HEAD(&rq->leaf_cfs_rq_list);

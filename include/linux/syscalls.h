@@ -871,6 +871,23 @@ asmlinkage long sys_process_vm_writev(pid_t pid,
 				      unsigned long riovcnt,
 				      unsigned long flags);
 
+#ifdef CONFIG_ATLAS
+asmlinkage long sys_atlas_next(uint64_t *);
+asmlinkage long sys_atlas_submit(pid_t pid, uint64_t id,
+				 struct timeval __user *exectime,
+				 struct timeval __user *deadline);
+asmlinkage long sys_atlas_update(pid_t pid, uint64_t id,
+				 struct timeval __user *exectime,
+				 struct timeval __user *deadline);
+asmlinkage long sys_atlas_remove(pid_t pid, uint64_t id);
+asmlinkage long sys_atlas_tp_create(uint64_t *id);
+asmlinkage long sys_atlas_tp_destroy(const uint64_t id);
+asmlinkage long sys_atlas_tp_join(const uint64_t id);
+asmlinkage long sys_atlas_tp_submit(const uint64_t tpid, const uint64_t id,
+				    struct timeval __user *exectime,
+				    struct timeval __user *deadline);
+#endif
+
 asmlinkage long sys_kcmp(pid_t pid1, pid_t pid2, int type,
 			 unsigned long idx1, unsigned long idx2);
 asmlinkage long sys_finit_module(int fd, const char __user *uargs, int flags);
