@@ -14,6 +14,10 @@
 #include "cpudeadline.h"
 #include "cpuacct.h"
 
+#ifdef CONFIG_ATLAS
+#include "atlas.h"
+#endif
+
 struct rq;
 struct cpuidle_state;
 
@@ -91,7 +95,11 @@ static inline int fair_policy(int policy)
 
 static inline int rt_policy(int policy)
 {
-	return policy == SCHED_FIFO || policy == SCHED_RR;
+	return policy == SCHED_FIFO || policy == SCHED_RR
+#ifdef CONFIG_ATLAS
+	       || policy == SCHED_ATLAS
+#endif
+			;
 }
 
 static inline int dl_policy(int policy)
@@ -589,6 +597,9 @@ struct rq {
 	u64 nr_switches;
 
 	struct cfs_rq cfs;
+#ifdef CONFIG_ATLAS
+	struct atlas_rq atlas;
+#endif
 	struct rt_rq rt;
 	struct dl_rq dl;
 
@@ -902,6 +913,13 @@ static inline unsigned int group_first_cpu(struct sched_group *group)
 
 extern int group_balance_cpu(struct sched_group *sg);
 
+struct migration_arg {
+	struct task_struct *task;
+	int dest_cpu;
+};
+
+int migration_cpu_stop(void *data);
+
 #else
 
 static inline void sched_ttwu_pending(void) { }
@@ -947,11 +965,21 @@ static inline void set_task_rq(struct task_struct *p, unsigned int cpu)
 	p->rt.rt_rq  = tg->rt_rq[cpu];
 	p->rt.parent = tg->rt_se[cpu];
 #endif
+
+#if defined(CONFIG_ATLAS) && defined(ATLAS_MIGRATE_IN_CFS)
+	set_task_rq_atlas(p, cpu);
+#endif
 }
 
 #else /* CONFIG_CGROUP_SCHED */
 
-static inline void set_task_rq(struct task_struct *p, unsigned int cpu) { }
+static inline void set_task_rq(struct task_struct *p, unsigned int cpu)
+{
+#if defined(CONFIG_ATLAS) && defined(ATLAS_MIGRATE_IN_CFS)
+	set_task_rq_atlas(p, cpu);
+#endif
+}
+
 static inline struct task_group *task_group(struct task_struct *p)
 {
 	return NULL;
@@ -1255,6 +1283,9 @@ static inline void put_prev_task(struct rq *rq, struct task_struct *prev)
 extern const struct sched_class stop_sched_class;
 extern const struct sched_class dl_sched_class;
 extern const struct sched_class rt_sched_class;
+#ifdef CONFIG_ATLAS
+extern const struct sched_class atlas_sched_class;
+#endif
 extern const struct sched_class fair_sched_class;
 extern const struct sched_class idle_sched_class;
 
@@ -1707,6 +1738,10 @@ print_numa_stats(struct seq_file *m, int node, unsigned long tsf,
 #endif /* CONFIG_SCHED_DEBUG */
 
 extern void init_cfs_rq(struct cfs_rq *cfs_rq);
+#ifdef CONFIG_ATLAS
+extern void init_atlas_rq(struct atlas_rq *atlas_rq, int cpu);
+extern void atlas_cfs_blocked(struct rq *rq, struct task_struct *p);
+#endif
 extern void init_rt_rq(struct rt_rq *rt_rq);
 extern void init_dl_rq(struct dl_rq *dl_rq);
 

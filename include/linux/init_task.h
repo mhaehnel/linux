@@ -14,6 +14,7 @@
 #include <linux/rbtree.h>
 #include <net/net_namespace.h>
 #include <linux/sched/rt.h>
+#include <linux/sched/atlas.h>
 
 #ifdef CONFIG_SMP
 # define INIT_PUSHABLE_TASKS(tsk)					\
@@ -173,6 +174,26 @@ extern struct task_group root_task_group;
 # define INIT_KASAN(tsk)
 #endif
 
+#ifdef CONFIG_ATLAS
+#define INIT_ATLAS(tsk)                                                        \
+	.atlas = {                                                             \
+		.flags = 0,                                                    \
+		.on_rq = 0,                                                    \
+		.job = NULL,                                                   \
+		.jobs = LIST_HEAD_INIT(tsk.atlas.jobs),                        \
+		.jobs_lock = __SPIN_LOCK_UNLOCKED(tsk.atlas.jobs_lock),        \
+		.last_mask = CPU_MASK_NONE,                                    \
+		.nr_jobs = {0},                                                \
+		.last_cpu = -1,                                                \
+		.tp = NULL,                                                    \
+		.tp_list = LIST_HEAD_INIT(tsk.atlas.tp_list),                  \
+		.horizon = 0,                                                  \
+		.reservation = 0,                                              \
+	},
+#else
+#define INIT_ATLAS(tsk)
+#endif
+
 /*
  *  INIT_TASK is used to set up the first task table, touch at
  * your own risk!. Base=0, limit=0x1fffff (=2MB)
@@ -201,6 +222,7 @@ extern struct task_group root_task_group;
 		.run_list	= LIST_HEAD_INIT(tsk.rt.run_list),	\
 		.time_slice	= RR_TIMESLICE,				\
 	},								\
+	INIT_ATLAS(tsk)                                                 \
 	.tasks		= LIST_HEAD_INIT(tsk.tasks),			\
 	INIT_PUSHABLE_TASKS(tsk)					\
 	INIT_CGROUP_SCHED(tsk)						\
@@ -250,7 +272,6 @@ extern struct task_group root_task_group;
 	INIT_NUMA_BALANCING(tsk)					\
 	INIT_KASAN(tsk)							\
 }
-
 
 #define INIT_CPU_TIMERS(cpu_timers)					\
 {									\

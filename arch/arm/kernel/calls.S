@@ -397,6 +397,14 @@
 /* 385 */	CALL(sys_memfd_create)
 		CALL(sys_bpf)
 		CALL(sys_execveat)
+		CALL(sys_atlas_next)
+		CALL(sys_atlas_submit)
+/* 390 */	CALL(sys_atlas_update)
+		CALL(sys_atlas_remove)
+		CALL(sys_atlas_tp_create)
+		CALL(sys_atlas_tp_destroy)
+		CALL(sys_atlas_tp_join)
+/* 395 */	CALL(sys_atlas_tp_submit)
 #ifndef syscalls_counted
 .equ syscalls_padding, ((NR_syscalls + 3) & ~3) - NR_syscalls
 #define syscalls_counted
