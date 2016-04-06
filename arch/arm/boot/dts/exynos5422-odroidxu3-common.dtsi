@@ -117,6 +117,79 @@
 		#cooling-cells = <2>;
 		cooling-levels = <0 130 170 230>;
 	};
+// 	odroid_fan {
+//             compatible = "odroid-fan";
+// 		pinctrl-names = "default";
+// 		pinctrl-0 = <&pwm0_out>;
+// 
+// 		pwm_id = <0>;
+// 		pwm_periode_ns = <20972>;	/* 22kHz */
+// 		pwm_duty = <200>;			/* initial value : 0 to 255 */
+// 
+// 		fan_mode = <1>; 			/* 0:manual, 1:auto */
+// 
+// 		tmu_level_0 = <68>;
+// 		tmu_level_1 = <73>;
+// 		tmu_level_2 = <85>;
+// 
+// 		fan_speed_0 = <1>;
+// 		fan_speed_1 = <51>;
+// 		fan_speed_2 = <71>;
+// 		fan_speed_3 = <91>;
+// 	};
+
+        /* PMU */
+        arm-pmu {
+                compatible = "arm,cortex-a15-pmu";
+                interrupt-parent = <&combiner>;
+                interrupts = <1 2>, <7 0>, <16 6>, <19 2>;
+        };
+
+        
+/*        i2c@12C60000 {
+		status = "okay";
+		clock-frequency = <400000>;
+		ina231@40  {
+			compatible = "hardkernel,INA231";
+			reg = <0x40>;
+			sensor-name = "sensor_arm";
+			enable = <0>;
+			max_A = <9>;
+			shunt_R_mohm = <10>;
+			config = <0x45FF>;
+			update_period = <263808>;
+		};
+		ina231@41  {
+			compatible = "hardkernel,INA231";
+			reg = <0x41>;
+			sensor-name = "sensor_mem";
+			enable = <0>;
+			max_A = <3>;
+			shunt_R_mohm = <10>;
+			config = <0x45FF>;
+			update_period = <263808>;
+		};
+		ina231@44  {
+			compatible = "hardkernel,INA231";
+			reg = <0x44>;
+			sensor-name = "sensor_g3d";
+			enable = <0>;
+			max_A = <5>;
+			shunt_R_mohm = <10>;
+			config = <0x45FF>;
+			update_period = <263808>;
+		};
+		ina231@45  {
+			compatible = "hardkernel,INA231";
+			reg = <0x45>;
+			sensor-name = "sensor_kfc";
+			enable = <0>;
+			max_A = <2>;
+			shunt_R_mohm = <10>;
+			config = <0x45FF>;
+			update_period = <263808>;
+		};
+	};*/
 };
 
 &clock_audss {

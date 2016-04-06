@@ -165,3 +165,7 @@ obj-$(CONFIG_RAS)		+= ras/
 obj-$(CONFIG_THUNDERBOLT)	+= thunderbolt/
 obj-$(CONFIG_CORESIGHT)		+= hwtracing/coresight/
 obj-$(CONFIG_ANDROID)		+= android/
+# Hardkernel Specific
+obj-$(CONFIG_PLAT_SAMSUNG)    += hardkernel/
+
+
