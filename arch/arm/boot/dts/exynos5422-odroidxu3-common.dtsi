@@ -117,6 +117,13 @@
 		#cooling-cells = <2>;
 		cooling-levels = <0 130 170 230>;
 	};
+
+        /* PMU */
+        arm-pmu {
+                compatible = "arm,cortex-a15-pmu";
+                interrupt-parent = <&combiner>;
+                interrupts = <1 2>, <7 0>, <16 6>, <19 2>;
+        };
 };
 
 &clock_audss {
