@@ -1149,8 +1149,7 @@ static inline void __setup_rq_timer(struct atlas_rq *atlas_rq, ktime_t timeout)
 	assert_raw_spin_locked(&rq_of(atlas_rq)->lock);
 	BUG_ON(atlas_rq->timer_target == ATLAS_NONE);
 
-	__hrtimer_start_range_ns(&atlas_rq->timer, timeout, 0,
-				 HRTIMER_MODE_ABS_PINNED, 0);
+	hrtimer_start(&atlas_rq->timer, timeout, HRTIMER_MODE_ABS_PINNED);
 }
 
 ktime_t slacktime(struct atlas_job *job)
