@@ -353,6 +353,13 @@
 			interrupts = <0 47 0>;
 		};
 
+                arm-pmu {
+                        compatible = "arm,cortex-a15-pmu";
+                        interrupt-parent = <&combiner>;
+                        interrupts = <1 2>, <7 0>, <16 6>, <19 2>;
+                };
+
+
 		amba {
 			#address-cells = <1>;
 			#size-cells = <1>;
