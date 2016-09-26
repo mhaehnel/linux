@@ -49,6 +49,16 @@
 		cluster_a15_opp_table: opp_table0 {
 			compatible = "operating-points-v2";
 			opp-shared;
+			opp@2000000000 {
+				opp-hz = /bits/ 64 <2000000000>;
+				opp-microvolt = <1250000>;
+				clock-latency-ns = <140000>;
+			};
+			opp@1900000000 {
+				opp-hz = /bits/ 64 <1900000000>;
+				opp-microvolt = <1250000>;
+				clock-latency-ns = <140000>;
+			};
 			opp@1800000000 {
 				opp-hz = /bits/ 64 <1800000000>;
 				opp-microvolt = <1250000>;
@@ -114,6 +124,11 @@
 		cluster_a7_opp_table: opp_table1 {
 			compatible = "operating-points-v2";
 			opp-shared;
+			opp@1400000000 {
+				opp-hz = /bits/ 64 <1400000000>;
+				opp-microvolt = <1275000>;
+				clock-latency-ns = <140000>;
+			};
 			opp@1300000000 {
 				opp-hz = /bits/ 64 <1300000000>;
 				opp-microvolt = <1275000>;
@@ -354,10 +369,16 @@
 		};
 
                 arm-pmu {
-                        compatible = "arm,cortex-a15-pmu";
+                        /*
+			compatible = "arm,cortex-a15-pmu";
                         interrupt-parent = <&combiner>;
                         interrupts = <1 2>, <7 0>, <16 6>, <19 2>;
+			*/
+                        compatible = "arm,cortex-a7-pmu";
+                        interrupt-parent = <&gic>;
+                        interrupts = <0 192 4>, <0 193 4>, <0 194 4>, <0 195 4>;
                 };
+		
 
 
 		amba {
