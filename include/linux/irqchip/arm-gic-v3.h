@@ -239,7 +239,7 @@
 #define GITS_TYPER_PTA			(1UL << 19)
 #define GITS_TYPER_HWCOLLCNT_SHIFT	24
 
-#define GITS_CBASER_VALID			(1UL << 63)
+#define GITS_CBASER_VALID			(1ULL << 63)
 #define GITS_CBASER_SHAREABILITY_SHIFT		(10)
 #define GITS_CBASER_INNER_CACHEABILITY_SHIFT	(59)
 #define GITS_CBASER_OUTER_CACHEABILITY_SHIFT	(53)
@@ -265,7 +265,7 @@
 
 #define GITS_BASER_NR_REGS		8
 
-#define GITS_BASER_VALID			(1UL << 63)
+#define GITS_BASER_VALID			(1ULL << 63)
 #define GITS_BASER_INDIRECT			(1ULL << 62)
 
 #define GITS_BASER_INNER_CACHEABILITY_SHIFT	(59)
@@ -290,7 +290,7 @@
 #define GITS_BASER_TYPE_SHIFT			(56)
 #define GITS_BASER_TYPE(r)		(((r) >> GITS_BASER_TYPE_SHIFT) & 7)
 #define GITS_BASER_ENTRY_SIZE_SHIFT		(48)
-#define GITS_BASER_ENTRY_SIZE(r)	((((r) >> GITS_BASER_ENTRY_SIZE_SHIFT) & 0xff) + 1)
+#define GITS_BASER_ENTRY_SIZE(r)	((((r) >> GITS_BASER_ENTRY_SIZE_SHIFT) & 0x1f) + 1)
 #define GITS_BASER_SHAREABILITY_SHIFT	(10)
 #define GITS_BASER_InnerShareable					\
 	GIC_BASER_SHAREABILITY(GITS_BASER, InnerShareable)
@@ -430,9 +430,9 @@ struct rdists {
 };
 
 struct irq_domain;
-struct device_node;
+struct fwnode_handle;
 int its_cpu_init(void);
-int its_init(struct device_node *node, struct rdists *rdists,
+int its_init(struct fwnode_handle *handle, struct rdists *rdists,
 	     struct irq_domain *domain);
 
 static inline bool gic_enable_sre(void)

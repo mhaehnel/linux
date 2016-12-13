@@ -58,7 +58,6 @@
 #include <asm/desc.h>
 #include <asm/nmi.h>
 #include <asm/irq.h>
-#include <asm/idle.h>
 #include <asm/realmode.h>
 #include <asm/cpu.h>
 #include <asm/numa.h>
@@ -108,6 +107,17 @@ static bool logical_packages_frozen __read_mostly;
 
 /* Maximum number of SMT threads on any online core */
 int __max_smt_threads __read_mostly;
+
+/* Flag to indicate if a complete sched domain rebuild is required */
+bool x86_topology_update;
+
+int arch_update_cpu_topology(void)
+{
+	int retval = x86_topology_update;
+
+	x86_topology_update = false;
+	return retval;
+}
 
 static inline void smpboot_setup_warm_reset_vector(unsigned long start_eip)
 {
@@ -471,31 +481,52 @@ static bool match_die(struct cpuinfo_x86 *c, struct cpuinfo_x86 *o)
 	return false;
 }
 
-static struct sched_domain_topology_level numa_inside_package_topology[] = {
+#if defined(CONFIG_SCHED_SMT) || defined(CONFIG_SCHED_MC)
+static inline int x86_sched_itmt_flags(void)
+{
+	return sysctl_sched_itmt_enabled ? SD_ASYM_PACKING : 0;
+}
+
+#ifdef CONFIG_SCHED_MC
+static int x86_core_flags(void)
+{
+	return cpu_core_flags() | x86_sched_itmt_flags();
+}
+#endif
 #ifdef CONFIG_SCHED_SMT
-	{ cpu_smt_mask, cpu_smt_flags, SD_INIT_NAME(SMT) },
+static int x86_smt_flags(void)
+{
+	return cpu_smt_flags() | x86_sched_itmt_flags();
+}
+#endif
+#endif
+
+static struct sched_domain_topology_level x86_numa_in_package_topology[] = {
+#ifdef CONFIG_SCHED_SMT
+	{ cpu_smt_mask, x86_smt_flags, SD_INIT_NAME(SMT) },
 #endif
 #ifdef CONFIG_SCHED_MC
-	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
+	{ cpu_coregroup_mask, x86_core_flags, SD_INIT_NAME(MC) },
 #endif
 	{ NULL, },
 };
+
+static struct sched_domain_topology_level x86_topology[] = {
+#ifdef CONFIG_SCHED_SMT
+	{ cpu_smt_mask, x86_smt_flags, SD_INIT_NAME(SMT) },
+#endif
+#ifdef CONFIG_SCHED_MC
+	{ cpu_coregroup_mask, x86_core_flags, SD_INIT_NAME(MC) },
+#endif
+	{ cpu_cpu_mask, SD_INIT_NAME(DIE) },
+	{ NULL, },
+};
+
 /*
- * set_sched_topology() sets the topology internal to a CPU.  The
- * NUMA topologies are layered on top of it to build the full
- * system topology.
- *
- * If NUMA nodes are observed to occur within a CPU package, this
- * function should be called.  It forces the sched domain code to
- * only use the SMT level for the CPU portion of the topology.
- * This essentially falls back to relying on NUMA information
- * from the SRAT table to describe the entire system topology
- * (except for hyperthreads).
+ * Set if a package/die has multiple NUMA nodes inside.
+ * AMD Magny-Cours and Intel Cluster-on-Die have this.
  */
-static void primarily_use_numa_for_topology(void)
-{
-	set_sched_topology(numa_inside_package_topology);
-}
+static bool x86_has_numa_in_package;
 
 void set_cpu_sibling_map(int cpu)
 {
@@ -558,7 +589,7 @@ void set_cpu_sibling_map(int cpu)
 				c->booted_cores = cpu_data(i).booted_cores;
 		}
 		if (match_die(c, o) && !topology_same_node(c, o))
-			primarily_use_numa_for_topology();
+			x86_has_numa_in_package = true;
 	}
 
 	threads = cpumask_weight(topology_sibling_cpumask(cpu));
@@ -690,7 +721,7 @@ wakeup_secondary_cpu_via_nmi(int apicid, unsigned long start_eip)
 	 * Give the other CPU some time to accept the IPI.
 	 */
 	udelay(200);
-	if (APIC_INTEGRATED(apic_version[boot_cpu_physical_apicid])) {
+	if (APIC_INTEGRATED(boot_cpu_apic_version)) {
 		maxlvt = lapic_get_maxlvt();
 		if (maxlvt > 3)			/* Due to the Pentium erratum 3AP.  */
 			apic_write(APIC_ESR, 0);
@@ -717,7 +748,7 @@ wakeup_secondary_cpu_via_init(int phys_apicid, unsigned long start_eip)
 	/*
 	 * Be paranoid about clearing APIC errors.
 	 */
-	if (APIC_INTEGRATED(apic_version[phys_apicid])) {
+	if (APIC_INTEGRATED(boot_cpu_apic_version)) {
 		if (maxlvt > 3)		/* Due to the Pentium erratum 3AP.  */
 			apic_write(APIC_ESR, 0);
 		apic_read(APIC_ESR);
@@ -756,7 +787,7 @@ wakeup_secondary_cpu_via_init(int phys_apicid, unsigned long start_eip)
 	 * Determine this based on the APIC version.
 	 * If we don't have an integrated APIC, don't send the STARTUP IPIs.
 	 */
-	if (APIC_INTEGRATED(apic_version[phys_apicid]))
+	if (APIC_INTEGRATED(boot_cpu_apic_version))
 		num_starts = 2;
 	else
 		num_starts = 0;
@@ -818,14 +849,6 @@ wakeup_secondary_cpu_via_init(int phys_apicid, unsigned long start_eip)
 		pr_err("APIC delivery error (%lx)\n", accept_status);
 
 	return (send_status | accept_status);
-}
-
-void smp_announce(void)
-{
-	int num_nodes = num_online_nodes();
-
-	printk(KERN_INFO "x86: Booted up %d node%s, %d CPUs\n",
-	       num_nodes, (num_nodes > 1 ? "s" : ""), num_online_cpus());
 }
 
 /* reduce the number of lines printed when booting a large cpu count system */
@@ -942,7 +965,6 @@ void common_cpu_up(unsigned int cpu, struct task_struct *idle)
 	per_cpu(cpu_current_top_of_stack, cpu) =
 		(unsigned long)task_stack_page(idle) + THREAD_SIZE;
 #else
-	clear_tsk_thread_flag(idle, TIF_FORK);
 	initial_gs = per_cpu_offset(cpu);
 #endif
 }
@@ -964,12 +986,10 @@ static int do_boot_cpu(int apicid, int cpu, struct task_struct *idle)
 	int cpu0_nmi_registered = 0;
 	unsigned long timeout;
 
-	idle->thread.sp = (unsigned long) (((struct pt_regs *)
-			  (THREAD_SIZE +  task_stack_page(idle))) - 1);
-
+	idle->thread.sp = (unsigned long)task_pt_regs(idle);
 	early_gdt_descr.address = (unsigned long)get_cpu_gdt_table(cpu);
 	initial_code = (unsigned long)start_secondary;
-	stack_start  = idle->thread.sp;
+	initial_stack  = idle->thread.sp;
 
 	/*
 	 * Enable the espfix hack for this CPU
@@ -994,7 +1014,7 @@ static int do_boot_cpu(int apicid, int cpu, struct task_struct *idle)
 		/*
 		 * Be paranoid about clearing APIC errors.
 		*/
-		if (APIC_INTEGRATED(apic_version[boot_cpu_physical_apicid])) {
+		if (APIC_INTEGRATED(boot_cpu_apic_version)) {
 			apic_write(APIC_ESR, 0);
 			apic_read(APIC_ESR);
 		}
@@ -1111,21 +1131,12 @@ int native_cpu_up(unsigned int cpu, struct task_struct *tidle)
 		return err;
 
 	/* the FPU context is blank, nobody can own it */
-	__cpu_disable_lazy_restore(cpu);
+	per_cpu(fpu_fpregs_owner_ctx, cpu) = NULL;
 
 	common_cpu_up(cpu, tidle);
 
-	/*
-	 * We have to walk the irq descriptors to setup the vector
-	 * space for the cpu which comes online.  Prevent irq
-	 * alloc/free across the bringup.
-	 */
-	irq_lock_sparse();
-
 	err = do_boot_cpu(apicid, cpu, tidle);
-
 	if (err) {
-		irq_unlock_sparse();
 		pr_err("do_boot_cpu failed(%d) to wakeup CPU#%u\n", err, cpu);
 		return -EIO;
 	}
@@ -1142,8 +1153,6 @@ int native_cpu_up(unsigned int cpu, struct task_struct *tidle)
 		cpu_relax();
 		touch_nmi_watchdog();
 	}
-
-	irq_unlock_sparse();
 
 	return 0;
 }
@@ -1249,7 +1258,7 @@ static int __init smp_sanity_check(unsigned max_cpus)
 	/*
 	 * If we couldn't find a local APIC, then get out of here now!
 	 */
-	if (APIC_INTEGRATED(apic_version[boot_cpu_physical_apicid]) &&
+	if (APIC_INTEGRATED(boot_cpu_apic_version) &&
 	    !boot_cpu_has(X86_FEATURE_APIC)) {
 		if (!disable_apic) {
 			pr_err("BIOS bug, local APIC #%d not detected!...\n",
@@ -1304,6 +1313,16 @@ void __init native_smp_prepare_cpus(unsigned int max_cpus)
 		zalloc_cpumask_var(&per_cpu(cpu_core_map, i), GFP_KERNEL);
 		zalloc_cpumask_var(&per_cpu(cpu_llc_shared_map, i), GFP_KERNEL);
 	}
+
+	/*
+	 * Set 'default' x86 topology, this matches default_topology() in that
+	 * it has NUMA nodes as a topology level. See also
+	 * native_smp_cpus_done().
+	 *
+	 * Must be done before set_cpus_sibling_map() is ran.
+	 */
+	set_sched_topology(x86_topology);
+
 	set_cpu_sibling_map(0);
 
 	switch (smp_sanity_check(max_cpus)) {
@@ -1323,17 +1342,16 @@ void __init native_smp_prepare_cpus(unsigned int max_cpus)
 		break;
 	}
 
-	default_setup_apic_routing();
-
 	if (read_apic_id() != boot_cpu_physical_apicid) {
 		panic("Boot APIC ID in local APIC unexpected (%d vs %d)",
 		     read_apic_id(), boot_cpu_physical_apicid);
 		/* Or can we switch back to PIC here? */
 	}
 
+	default_setup_apic_routing();
 	cpu0_logical_apicid = apic_bsp_setup(false);
 
-	pr_info("CPU%d: ", 0);
+	pr_info("CPU0: ");
 	print_cpu_info(&cpu_data(0));
 
 	if (is_uv_system())
@@ -1369,6 +1387,9 @@ void __init native_smp_prepare_boot_cpu(void)
 void __init native_smp_cpus_done(unsigned int max_cpus)
 {
 	pr_debug("Boot done\n");
+
+	if (x86_has_numa_in_package)
+		set_sched_topology(x86_numa_in_package_topology);
 
 	nmi_selftest();
 	impress_friends();
@@ -1406,9 +1427,23 @@ __init void prefill_possible_map(void)
 {
 	int i, possible;
 
-	/* no processor from mptable or madt */
-	if (!num_processors)
-		num_processors = 1;
+	/* No boot processor was found in mptable or ACPI MADT */
+	if (!num_processors) {
+		if (boot_cpu_has(X86_FEATURE_APIC)) {
+			int apicid = boot_cpu_physical_apicid;
+			int cpu = hard_smp_processor_id();
+
+			pr_warn("Boot CPU (id %d) not listed by BIOS\n", cpu);
+
+			/* Make sure boot cpu is enumerated */
+			if (apic->cpu_present_to_apicid(0) == BAD_APICID &&
+			    apic->apic_id_valid(apicid))
+				generic_processor_info(apicid, boot_cpu_apic_version);
+		}
+
+		if (!num_processors)
+			num_processors = 1;
+	}
 
 	i = setup_max_cpus ?: 1;
 	if (setup_possible_cpus == -1) {
@@ -1560,7 +1595,6 @@ void play_dead_common(void)
 {
 	idle_task_exit();
 	reset_lazy_tlbstate();
-	amd_e400_remove_cpu(raw_smp_processor_id());
 
 	/* Ack it */
 	(void)cpu_report_death();

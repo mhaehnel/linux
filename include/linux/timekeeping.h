@@ -1,7 +1,7 @@
 #ifndef _LINUX_TIMEKEEPING_H
 #define _LINUX_TIMEKEEPING_H
 
-#include <asm-generic/errno-base.h>
+#include <linux/errno.h>
 
 /* Included from linux/ktime.h */
 
@@ -249,6 +249,7 @@ static inline u64 ktime_get_raw_ns(void)
 
 extern u64 ktime_get_mono_fast_ns(void);
 extern u64 ktime_get_raw_fast_ns(void);
+extern u64 ktime_get_boot_fast_ns(void);
 
 /*
  * Timespec interfaces utilizing the ktime based ones

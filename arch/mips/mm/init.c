@@ -10,7 +10,7 @@
  */
 #include <linux/bug.h>
 #include <linux/init.h>
-#include <linux/module.h>
+#include <linux/export.h>
 #include <linux/signal.h>
 #include <linux/sched.h>
 #include <linux/smp.h>
@@ -118,7 +118,7 @@ static void *__kmap_pgprot(struct page *page, unsigned long addr, pgprot_t prot)
 		writex_c0_entrylo1(entrylo);
 	}
 #endif
-	tlbidx = read_c0_wired();
+	tlbidx = num_wired_entries();
 	write_c0_wired(tlbidx + 1);
 	write_c0_index(tlbidx);
 	mtc0_tlbw_hazard();
@@ -147,7 +147,7 @@ void kunmap_coherent(void)
 
 	local_irq_save(flags);
 	old_ctx = read_c0_entryhi();
-	wired = read_c0_wired() - 1;
+	wired = num_wired_entries() - 1;
 	write_c0_wired(wired);
 	write_c0_index(wired);
 	write_c0_entryhi(UNIQUE_ENTRYHI(wired));
@@ -439,6 +439,9 @@ static inline void mem_init_free_highmem(void)
 {
 #ifdef CONFIG_HIGHMEM
 	unsigned long tmp;
+
+	if (cpu_has_dc_aliases)
+		return;
 
 	for (tmp = highstart_pfn; tmp < highend_pfn; tmp++) {
 		struct page *page = pfn_to_page(tmp);

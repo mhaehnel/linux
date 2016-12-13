@@ -15,10 +15,13 @@ int bpf_prog_load(enum bpf_prog_type prog_type,
 		  const struct bpf_insn *insns, int insn_len,
 		  const char *license, int kern_version);
 
+int bpf_prog_attach(int prog_fd, int attachable_fd, enum bpf_attach_type type);
+int bpf_prog_detach(int attachable_fd, enum bpf_attach_type type);
+
 int bpf_obj_pin(int fd, const char *pathname);
 int bpf_obj_get(const char *pathname);
 
-#define LOG_BUF_SIZE 65536
+#define LOG_BUF_SIZE (256 * 1024)
 extern char bpf_log_buf[LOG_BUF_SIZE];
 
 /* ALU ops on registers, bpf_add|sub|...: dst_reg += src_reg */
@@ -80,6 +83,14 @@ extern char bpf_log_buf[LOG_BUF_SIZE];
 #define BPF_MOV64_IMM(DST, IMM)					\
 	((struct bpf_insn) {					\
 		.code  = BPF_ALU64 | BPF_MOV | BPF_K,		\
+		.dst_reg = DST,					\
+		.src_reg = 0,					\
+		.off   = 0,					\
+		.imm   = IMM })
+
+#define BPF_MOV32_IMM(DST, IMM)					\
+	((struct bpf_insn) {					\
+		.code  = BPF_ALU | BPF_MOV | BPF_K,		\
 		.dst_reg = DST,					\
 		.src_reg = 0,					\
 		.off   = 0,					\

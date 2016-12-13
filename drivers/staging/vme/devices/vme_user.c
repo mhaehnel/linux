@@ -47,7 +47,7 @@ static const char driver_name[] = "vme_user";
 static int bus[VME_USER_BUS_MAX];
 static unsigned int bus_num;
 
-/* Currently Documentation/devices.txt defines the following for VME:
+/* Currently Documentation/admin-guide/devices.rst defines the following for VME:
  *
  * 221 char	VME bus
  *		  0 = /dev/bus/vme/m0		First master image
@@ -773,7 +773,7 @@ static void __exit vme_user_exit(void)
 }
 
 MODULE_PARM_DESC(bus, "Enumeration of VMEbus to which the driver is connected");
-module_param_array(bus, int, &bus_num, 0);
+module_param_array(bus, int, &bus_num, 0000);
 
 MODULE_DESCRIPTION("VME User Space Access Driver");
 MODULE_AUTHOR("Martyn Welch <martyn.welch@ge.com");

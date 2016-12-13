@@ -186,9 +186,12 @@ static bool check_tick_dependency(atomic_t *dep)
 	return false;
 }
 
-static bool can_stop_full_tick(struct tick_sched *ts)
+static bool can_stop_full_tick(int cpu, struct tick_sched *ts)
 {
 	WARN_ON_ONCE(!irqs_disabled());
+
+	if (unlikely(!cpu_online(cpu)))
+		return false;
 
 	if (check_tick_dependency(&tick_dep_mask))
 		return false;
@@ -387,24 +390,16 @@ static int __init tick_nohz_full_setup(char *str)
 }
 __setup("nohz_full=", tick_nohz_full_setup);
 
-static int tick_nohz_cpu_down_callback(struct notifier_block *nfb,
-				       unsigned long action,
-				       void *hcpu)
+static int tick_nohz_cpu_down(unsigned int cpu)
 {
-	unsigned int cpu = (unsigned long)hcpu;
-
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_DOWN_PREPARE:
-		/*
-		 * The boot CPU handles housekeeping duty (unbound timers,
-		 * workqueues, timekeeping, ...) on behalf of full dynticks
-		 * CPUs. It must remain online when nohz full is enabled.
-		 */
-		if (tick_nohz_full_running && tick_do_timer_cpu == cpu)
-			return NOTIFY_BAD;
-		break;
-	}
-	return NOTIFY_OK;
+	/*
+	 * The boot CPU handles housekeeping duty (unbound timers,
+	 * workqueues, timekeeping, ...) on behalf of full dynticks
+	 * CPUs. It must remain online when nohz full is enabled.
+	 */
+	if (tick_nohz_full_running && tick_do_timer_cpu == cpu)
+		return -EBUSY;
+	return 0;
 }
 
 static int tick_nohz_init_all(void)
@@ -425,7 +420,7 @@ static int tick_nohz_init_all(void)
 
 void __init tick_nohz_init(void)
 {
-	int cpu;
+	int cpu, ret;
 
 	if (!tick_nohz_full_running) {
 		if (tick_nohz_init_all() < 0)
@@ -466,7 +461,10 @@ void __init tick_nohz_init(void)
 	for_each_cpu(cpu, tick_nohz_full_mask)
 		context_tracking_cpu_set(cpu);
 
-	cpu_notifier(tick_nohz_cpu_down_callback, 0);
+	ret = cpuhp_setup_state_nocalls(CPUHP_AP_ONLINE_DYN,
+					"kernel/nohz:predown", NULL,
+					tick_nohz_cpu_down);
+	WARN_ON(ret < 0);
 	pr_info("NO_HZ: Full dynticks CPUs: %*pbl.\n",
 		cpumask_pr_args(tick_nohz_full_mask));
 
@@ -843,7 +841,7 @@ static void tick_nohz_full_update_tick(struct tick_sched *ts)
 	if (!ts->tick_stopped && ts->nohz_mode == NOHZ_MODE_INACTIVE)
 		return;
 
-	if (can_stop_full_tick(ts))
+	if (can_stop_full_tick(cpu, ts))
 		tick_nohz_stop_sched_tick(ts, ktime_get(), cpu);
 	else if (ts->tick_stopped)
 		tick_nohz_restart_sched_tick(ts, ktime_get());

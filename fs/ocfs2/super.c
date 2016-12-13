@@ -337,7 +337,7 @@ static int ocfs2_osb_dump(struct ocfs2_super *osb, char *buf, int len)
 		out += snprintf(buf + out, len - out, "Disabled\n");
 	else
 		out += snprintf(buf + out, len - out, "%lu seconds ago\n",
-				(get_seconds() - os->os_scantime.tv_sec));
+				(unsigned long)(ktime_get_seconds() - os->os_scantime));
 
 	out += snprintf(buf + out, len - out, "%10s => %3s  %10s\n",
 			"Slots", "Num", "RecoGen");
@@ -2329,7 +2329,7 @@ static int ocfs2_initialize_super(struct super_block *sb,
 	}
 	cleancache_init_shared_fs(sb);
 
-	osb->ocfs2_wq = create_singlethread_workqueue("ocfs2_wq");
+	osb->ocfs2_wq = alloc_ordered_workqueue("ocfs2_wq", WQ_MEM_RECLAIM);
 	if (!osb->ocfs2_wq) {
 		status = -ENOMEM;
 		mlog_errno(status);

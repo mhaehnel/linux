@@ -234,6 +234,7 @@ void free_fib_info(struct fib_info *fi)
 #endif
 	call_rcu(&fi->rcu, free_fib_info_rcu);
 }
+EXPORT_SYMBOL_GPL(free_fib_info);
 
 void fib_release_info(struct fib_info *fi)
 {
@@ -1580,7 +1581,8 @@ static bool fib_good_nh(const struct fib_nh *nh)
 
 		rcu_read_lock_bh();
 
-		n = __ipv4_neigh_lookup_noref(nh->nh_dev, nh->nh_gw);
+		n = __ipv4_neigh_lookup_noref(nh->nh_dev,
+					      (__force u32)nh->nh_gw);
 		if (n)
 			state = n->nud_state;
 
