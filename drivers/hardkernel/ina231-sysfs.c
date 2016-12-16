@@ -112,7 +112,7 @@ static	ssize_t show_energy			(struct device *dev, struct device_attribute *attr,
 	
 	mutex_lock(&sensor->mutex); value = sensor->cur_uJ; mutex_unlock(&sensor->mutex);
 
-	return sprintf(buf, "%d.%06d\n", (value/1000000), (value%1000000));
+	return sprintf(buf, "%llu.%06llu\n", (value/1000000ll), (value%1000000ll));
 }
 
 //[*]--------------------------------------------------------------------------------------------------[*]

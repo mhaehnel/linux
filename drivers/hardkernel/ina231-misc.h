@@ -17,7 +17,7 @@ struct ina231_iocreg	{
 	unsigned int	cur_uV;
 	unsigned int	cur_uA;
 	unsigned int	cur_uW;
-	unsigned int	cur_uJ;
+	unsigned long long	cur_uJ;
 } 	__attribute__ ((packed));
 
 #define INA231_IOCGREG		_IOR('i', 1, struct ina231_iocreg *)
